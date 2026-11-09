@@ -1,0 +1,6 @@
+{
+  "name": "Sandbox City",
+  "description": "PayPal's sandbox is a ghost town. We give it a population. A chaos engineering miniature city simulation for payment integrations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
