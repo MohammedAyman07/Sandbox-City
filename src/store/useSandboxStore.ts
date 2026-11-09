@@ -451,7 +451,10 @@ export const useSandboxStore = create<SandboxStoreState>((set, get) => ({
 
   fetchInitialServerStatus: async () => {
     try {
-      const res = await fetch('/api/status');
+      const appUrl = typeof window !== 'undefined' ? window.location.origin : '';
+      const res = await fetch('/api/status', {
+        headers: appUrl ? { 'X-App-Url': appUrl } : undefined,
+      });
       if (!res.ok) return;
       const data = await res.json();
       set({
@@ -481,7 +484,10 @@ export const useSandboxStore = create<SandboxStoreState>((set, get) => ({
   runHealthCheck: async () => {
     set({ healthLoading: true });
     try {
-      const res = await fetch('/api/health');
+      const appUrl = typeof window !== 'undefined' ? window.location.origin : '';
+      const res = await fetch('/api/health', {
+        headers: appUrl ? { 'X-App-Url': appUrl } : undefined,
+      });
       const data = (await res.json()) as HealthCheckResponse;
       set({
         apiHealth: data,
@@ -498,9 +504,13 @@ export const useSandboxStore = create<SandboxStoreState>((set, get) => ({
   seedLivePurchases: async () => {
     set({ seedingLoading: true });
     try {
+      const appUrl = typeof window !== 'undefined' ? window.location.origin : '';
       const res = await fetch('/api/orders/seed', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(appUrl ? { 'X-App-Url': appUrl } : {}),
+        },
       });
       const data = await res.json();
       if (Array.isArray(data.orders)) {
@@ -524,9 +534,13 @@ export const useSandboxStore = create<SandboxStoreState>((set, get) => ({
     if (!citizen) return;
 
     try {
+      const appUrl = typeof window !== 'undefined' ? window.location.origin : '';
       const res = await fetch('/api/citizen-action', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(appUrl ? { 'X-App-Url': appUrl } : {}),
+        },
         body: JSON.stringify({
           citizenId: citizen.id,
           citizenName: citizen.name,

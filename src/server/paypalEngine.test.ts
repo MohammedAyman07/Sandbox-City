@@ -5,6 +5,7 @@ import {
   buildPayPalOrderPayload,
   evaluateWebhookDeduplication,
   generatePayPalRequestId,
+  paypalSandboxManager,
   PAYPAL_SANDBOX_BASE_URL,
 } from './paypalEngine';
 
@@ -89,4 +90,29 @@ test('generatePayPalRequestId generates unique idempotency headers unless duplic
   const d1 = generatePayPalRequestId('orders', 'burst_seed');
   const d2 = generatePayPalRequestId('orders', 'burst_seed');
   assert.equal(d1, d2);
+});
+
+test('getCredentials resolves appUrl intelligently with override, RENDER_EXTERNAL_URL, and dynamic setAppUrl', () => {
+  // Test 1: Explicit override
+  const credsOverride = paypalSandboxManager.getCredentials('https://sandbox-city-kn6x.onrender.com');
+  assert.equal(credsOverride.appUrl, 'https://sandbox-city-kn6x.onrender.com');
+
+  // Test 2: Dynamic setAppUrl
+  paypalSandboxManager.setAppUrl('https://my-custom-domain.com');
+  const credsDynamic = paypalSandboxManager.getCredentials();
+  assert.equal(credsDynamic.appUrl, 'https://my-custom-domain.com');
+
+  // Test 3: RENDER_EXTERNAL_URL env var
+  const origRender = process.env.RENDER_EXTERNAL_URL;
+  try {
+    process.env.RENDER_EXTERNAL_URL = 'https://render-test-app.onrender.com';
+    const credsRender = paypalSandboxManager.getCredentials();
+    assert.equal(credsRender.appUrl, 'https://render-test-app.onrender.com');
+  } finally {
+    if (origRender !== undefined) {
+      process.env.RENDER_EXTERNAL_URL = origRender;
+    } else {
+      delete process.env.RENDER_EXTERNAL_URL;
+    }
+  }
 });

@@ -281,14 +281,43 @@ class PayPalSandboxManager {
   private sseClients = new Set<(event: SandboxEvent) => void>();
   private eventSeq = 5000;
   private daveIdx = 0;
+  private cachedAppUrl?: string;
 
-  public getCredentials() {
+  public setAppUrl(url: string): void {
+    const cleaned = (url || '').trim().replace(/\/+$/, '');
+    if (cleaned && !cleaned.includes('localhost') && !cleaned.includes('127.0.0.1')) {
+      this.cachedAppUrl = cleaned;
+    }
+  }
+
+  public getCredentials(customAppUrl?: string) {
     const clientId = (process.env.PAYPAL_CLIENT_ID || '').trim();
     const clientSecret = (process.env.PAYPAL_CLIENT_SECRET || '').trim();
     const webhookId = (process.env.PAYPAL_WEBHOOK_ID || '').trim();
     const payoutRecipientEmail = (process.env.PAYPAL_PAYOUT_RECIPIENT_EMAIL || '').trim();
     const buyerEmail = (process.env.PAYPAL_BUYER_EMAIL || '').trim();
-    const appUrl = (process.env.APP_URL || 'http://localhost:3000').replace(/\/+$/, '');
+
+    let configuredUrl = (process.env.APP_URL || '').trim();
+    if (configuredUrl === 'MY_APP_URL') {
+      configuredUrl = '';
+    }
+
+    const renderExternalUrl = (process.env.RENDER_EXTERNAL_URL || '').trim();
+    const isProduction = process.env.NODE_ENV === 'production' || Boolean(process.env.RENDER);
+
+    let appUrl = (
+      customAppUrl ||
+      configuredUrl ||
+      renderExternalUrl ||
+      this.cachedAppUrl ||
+      (isProduction ? 'https://sandbox-city-kn6x.onrender.com' : '') ||
+      `http://localhost:${process.env.PORT || 3000}`
+    ).replace(/\/+$/, '');
+
+    // In production or Render environments, never redirect PayPal to localhost
+    if (isProduction && (appUrl.includes('localhost') || appUrl.includes('127.0.0.1'))) {
+      appUrl = renderExternalUrl || 'https://sandbox-city-kn6x.onrender.com';
+    }
 
     const hasClientCreds =
       Boolean(clientId) &&
@@ -774,6 +803,7 @@ class PayPalSandboxManager {
     isBotBurst?: boolean;
     simDay?: number;
     simMinuteOfDay?: number;
+    appUrl?: string;
   }): Promise<{
     events: SandboxEvent[];
     approveUrl?: string;
@@ -781,7 +811,7 @@ class PayPalSandboxManager {
     liveCallsCount: number;
     fallbackBanners: ApiFallbackBanner[];
   }> {
-    const creds = this.getCredentials();
+    const creds = this.getCredentials(params.appUrl);
     const { citizenId, citizenName, bugFlags, isBotBurst } = params;
     const emitted: SandboxEvent[] = [];
 
@@ -1031,13 +1061,13 @@ class PayPalSandboxManager {
    * "Seed live purchases" panel: creates 4 real orders and returns approval links
    * so the user can open them as the sandbox buyer and trigger /paypal/return capture.
    */
-  public async seedLivePurchases(): Promise<{
+  public async seedLivePurchases(customAppUrl?: string): Promise<{
     orders: SeededOrderItem[];
     events: SandboxEvent[];
     liveCallsCount: number;
     fallbackBanners: ApiFallbackBanner[];
   }> {
-    const creds = this.getCredentials();
+    const creds = this.getCredentials(customAppUrl);
     const specs = [
       { citizenId: 'marge', citizenName: 'Marge', item: 'Retro Espresso Maker', amount: 54.0 },
       { citizenId: 'luna', citizenName: 'Luna', item: 'Studio USB-C Microphone', amount: 84.0 },
@@ -1190,7 +1220,7 @@ class PayPalSandboxManager {
       });
 
       if (apiRes.liveExecuted) {
-        // Extract capture ID from purchase_units[0].payments.captures[0].id
+        // Extract capture ID and amount from purchase_units[0].payments.captures[0]
         const pus = Array.isArray(apiRes.data.purchase_units)
           ? (apiRes.data.purchase_units as Record<string, unknown>[])
           : [];
@@ -1198,15 +1228,22 @@ class PayPalSandboxManager {
         const captures = Array.isArray(payments.captures)
           ? (payments.captures as Record<string, unknown>[])
           : [];
+        const captureObj = (captures[0] || {}) as Record<string, unknown>;
         const captureId =
-          typeof captures[0]?.id === 'string' ? captures[0].id : `CAP_${orderId}`;
+          typeof captureObj.id === 'string' ? captureObj.id : `CAP_${orderId}`;
+        const captureAmountObj = captureObj.amount as Record<string, string> | undefined;
+        const capturedAmountNum = captureAmountObj?.value ? Number(captureAmountObj.value) : amountNum;
+        const capturedCurrency = captureAmountObj?.currency_code || 'USD';
 
-        if (apiRes.ok) {
+        const isAlreadyCaptured = apiRes.paypalErrorName === 'ORDER_ALREADY_CAPTURED';
+        const captureSuccess = apiRes.ok || isAlreadyCaptured;
+
+        if (captureSuccess) {
           this.storedCaptures.unshift({
             captureId,
             orderId,
-            amount: amountNum.toFixed(2),
-            currency: 'USD',
+            amount: capturedAmountNum.toFixed(2),
+            currency: capturedCurrency,
             citizenName,
             refunded: false,
           });
@@ -1220,26 +1257,28 @@ class PayPalSandboxManager {
           citizenId,
           citizenName,
           buildingId: 'bank_tower',
-          type: apiRes.ok ? 'pay' : 'abandon',
+          type: captureSuccess ? 'pay' : 'abandon',
           paypalApi: `POST /v2/checkout/orders/${orderId}/capture`,
           source: 'LIVE_SANDBOX',
           httpStatus: apiRes.httpStatus,
           latencyMs: apiRes.latencyMs,
-          amount: amountNum,
-          currency: 'USD',
+          amount: capturedAmountNum,
+          currency: capturedCurrency,
           paypalDebugId: apiRes.paypalDebugId,
           paypalErrorName: apiRes.paypalErrorName,
           orderId,
-          captureId: apiRes.ok ? captureId : undefined,
-          rawResponseStatus: `HTTP ${apiRes.httpStatus} ${apiRes.ok ? 'COMPLETED' : apiRes.paypalErrorName || 'FAILED'}`,
+          captureId: captureSuccess ? captureId : undefined,
+          rawResponseStatus: `HTTP ${apiRes.httpStatus} ${captureSuccess ? 'COMPLETED' : apiRes.paypalErrorName || 'FAILED'}`,
           summary: apiRes.ok
-            ? `LIVE order ${orderId} captured (Capture ID ${captureId}, $${amountNum.toFixed(2)}) — debug ID ${apiRes.paypalDebugId || 'n/a'}.`
-            : `Real PayPal capture error on ${orderId}: ${apiRes.paypalErrorName || apiRes.httpStatus} (debug ID ${apiRes.paypalDebugId || 'n/a'}).`,
+            ? `LIVE order ${orderId} captured (Capture ID ${captureId}, $${capturedAmountNum.toFixed(2)} ${capturedCurrency}) — debug ID ${apiRes.paypalDebugId || 'n/a'}.`
+            : isAlreadyCaptured
+              ? `LIVE order ${orderId} has already been captured and processed.`
+              : `Real PayPal capture error on ${orderId}: ${apiRes.paypalErrorName || apiRes.httpStatus} (debug ID ${apiRes.paypalDebugId || 'n/a'}).`,
           flagsInvolved: [],
         });
 
         return {
-          ok: apiRes.ok,
+          ok: captureSuccess,
           source: 'LIVE_SANDBOX',
           captureId,
           paypalDebugId: apiRes.paypalDebugId,
