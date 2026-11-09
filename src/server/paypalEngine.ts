@@ -19,7 +19,7 @@ import { BUILDING_MAP, DAVE_DRAMATIC_COMPLAINTS } from '../utils/cityData';
  * Refuse to start any call if the host is anything else.
  */
 export const PAYPAL_SANDBOX_BASE_URL = 'https://api-m.sandbox.paypal.com';
-export const DEFAULT_MAX_LIVE_CALLS = 40;
+export const DEFAULT_MAX_LIVE_CALLS = Number(process.env.MAX_LIVE_CALLS) || 100;
 
 export function assertSafePayPalUrl(urlStr: string): URL {
   let parsed: URL;

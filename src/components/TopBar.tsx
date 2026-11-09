@@ -216,13 +216,25 @@ export const TopBar: React.FC = () => {
         {/* Far Right: "Live calls: n / 40" Counter + Demo Mode | Live Sandbox Toggle + Settings Drawer Button */}
         <div className="flex items-center gap-2.5 shrink-0">
           {/* Live Calls Counter */}
-          <div
+          <button
+            type="button"
+            onClick={() => {
+              if (liveCallsCount >= maxLiveCalls) {
+                fetch('/api/reset-counter', { method: 'POST' }).catch(() => {});
+                useSandboxStore.setState({ liveCallsCount: 0, fallbackBanners: [] });
+              }
+            }}
             aria-label={`Live calls counter ${liveCallsCount} of ${maxLiveCalls}`}
-            title="Live PayPal API calls made in this run (capped at 40 per run for safety)"
-            className="px-3 py-1.5 rounded-full bg-[#FFF4E0] border border-[#1F2340]/15 font-mono text-xs font-bold text-[#1F2340] whitespace-nowrap"
+            title={liveCallsCount >= maxLiveCalls ? 'Limit reached — click to reset live call counter' : 'Live PayPal API calls made in this run'}
+            className={`px-3 py-1.5 rounded-full border font-mono text-xs font-bold whitespace-nowrap transition-colors ${
+              liveCallsCount >= maxLiveCalls
+                ? 'bg-[#E8765A]/20 border-[#E8765A] text-[#B91C1C] cursor-pointer hover:bg-[#E8765A]/30'
+                : 'bg-[#FFF4E0] border-[#1F2340]/15 text-[#1F2340]'
+            }`}
           >
-            Live calls: <span className="text-[#0070E0]">{liveCallsCount}</span> / {maxLiveCalls}
-          </div>
+            Live calls: <span className={liveCallsCount >= maxLiveCalls ? 'text-[#B91C1C]' : 'text-[#0070E0]'}>{liveCallsCount}</span> / {maxLiveCalls}
+            {liveCallsCount >= maxLiveCalls && <span className="ml-1 text-[10px] font-bold underline">(Reset)</span>}
+          </button>
 
           <div
             role="group"

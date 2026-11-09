@@ -140,13 +140,25 @@ export default function App() {
                   PayPal API Fallback to SIMULATED
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={() => setMode('SIMULATED')}
-                className="px-2.5 py-1 rounded-lg bg-[#0070E0] text-white text-[10px] font-bold cursor-pointer"
-              >
-                Switch to Demo Mode
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    fetch('/api/reset-counter', { method: 'POST' }).catch(() => {});
+                    useSandboxStore.setState({ liveCallsCount: 0, fallbackBanners: [] });
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-[#3DDC97] hover:bg-[#32B87D] text-[#1F2340] text-[10px] font-bold cursor-pointer"
+                >
+                  Reset Counter
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode('SIMULATED')}
+                  className="px-2.5 py-1 rounded-lg bg-[#0070E0] text-white text-[10px] font-bold cursor-pointer"
+                >
+                  Switch to Demo Mode
+                </button>
+              </div>
             </div>
 
             <div className="space-y-1.5 max-h-28 overflow-y-auto pr-1">
